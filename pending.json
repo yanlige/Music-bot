@@ -1,0 +1,19 @@
+[
+  {
+    "fingerprint": "9de5949b6fb472c4",
+    "title": "分享《孤勇者》陈奕迅",
+    "url": "",
+    "status": "failed",
+    "track": {
+      "id": 1901371647,
+      "name": "孤勇者",
+      "artist": "陈奕迅",
+      "album": "孤勇者",
+      "duration": 256000
+    },
+    "score": 1.0,
+    "via": "title:孤勇者 陈奕迅",
+    "ts": 1794720800,
+    "note": "红心失败，检查 NETEASE_MUSIC_U 是否过期"
+  }
+]

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>待确认 · 视频号好歌</title>
+<style>
+  :root{
+    --bg:#fafafa; --card:#fff; --text:#1a1a1a; --sub:#8a8f98; --line:#e8e9ec;
+    --accent:#d33a31; --accent-soft:#fdeceb; --ok:#1e7a3a; --ok-soft:#e9f6ed;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#111214; --card:#1a1c1f; --text:#eceef1; --sub:#8b9098; --line:#2a2d32;
+      --accent:#e2564c; --accent-soft:#2a1a19; --ok:#5fbf82; --ok-soft:#152318;
+    }
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;padding:20px 16px 60px;background:var(--bg);color:var(--text);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    max-width:680px;margin-inline:auto;
+  }
+  h1{font-size:20px;margin:0 0 4px}
+  .lead{color:var(--sub);font-size:13px;margin:0 0 22px}
+  .stats{display:flex;gap:10px;margin-bottom:24px}
+  .stat{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .stat b{display:block;font-size:22px;line-height:1.2;font-variant-numeric:tabular-nums}
+  .stat span{font-size:12px;color:var(--sub)}
+  h2{font-size:13px;color:var(--sub);font-weight:600;letter-spacing:.04em;margin:26px 0 10px}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
+  .title{font-weight:600;font-size:14.5px;margin-bottom:6px;word-break:break-word}
+  .meta{color:var(--sub);font-size:12px;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap}
+  .actions{display:flex;gap:8px}
+  a.btn,button.btn{
+    flex:1;display:inline-flex;align-items:center;justify-content:center;
+    padding:9px 10px;border-radius:9px;font-size:13px;font-weight:500;
+    text-decoration:none;border:1px solid var(--line);background:transparent;
+    color:var(--text);cursor:pointer;font-family:inherit;
+  }
+  a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .empty{color:var(--sub);font-size:13px;padding:26px 0;text-align:center}
+  .done li{list-style:none;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;
+    display:flex;justify-content:space-between;gap:12px}
+  .done{padding:0;margin:0}
+  .done li:last-child{border-bottom:0}
+  .done .t{color:var(--sub);font-size:12px;white-space:nowrap}
+  .foot{margin-top:34px;color:var(--sub);font-size:11.5px;text-align:center}
+</style>
+</head>
+<body>
+
+<h1>待确认</h1>
+<p class="lead">这些没认准，点一下去网易云搜，听到对的就红心。</p>
+
+<div class="stats">
+  <div class="stat"><b id="n-pending">–</b><span>待确认</span></div>
+  <div class="stat"><b id="n-liked">–</b><span>已入库</span></div>
+</div>
+
+<h2>需要你看一眼</h2>
+<div id="pending-list"><div class="empty">加载中…</div></div>
+
+<h2>最近入库</h2>
+<ul class="done" id="liked-list"><li><span class="t">加载中…</span></li></ul>
+
+<p class="foot">数据来自仓库 data/ 目录，每次跑完自动更新</p>
+
+<script>
+const fmt = ts => {
+  const d = new Date(ts * 1000);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+};
+
+const searchUrl = kw => 'https://music.163.com/#/search/m/?s=' + encodeURIComponent(kw);
+
+async function load(name){
+  try{
+    const r = await fetch('./' + name + '?t=' + Date.now());
+    if(!r.ok) return null;
+    return await r.json();
+  }catch(e){ return null; }
+}
+
+(async () => {
+  let pending = await load('pending');
+  let state   = await load('state');
+  let latest  = await load('latest');
+
+  // 本地直接打开 html 时读不到数据，用一份演示数据把界面撑起来
+  let demo = false;
+  if (!pending) {
+    demo = true;
+    pending = [
+      {title:'这个BGM绝了😭循环一整天', score:0.11, ts:Math.floor(Date.now()/1000)-3600, fingerprint:'d1', track:{name:'', artist:''}},
+      {title:'#周杰伦 #晴天 前奏一响', score:0.65, ts:Math.floor(Date.now()/1000)-7200, fingerprint:'d2', track:{name:'晴天'}},
+      {title:'深夜emo必备', score:0, ts:Math.floor(Date.now()/1000)-10800, fingerprint:'d3', status:'failed', note:'红心失败，检查 NETEASE_MUSIC_U 是否过期'}
+    ];
+    state  = {liked:[{label:'《晚风》陈婧霏', ts:Math.floor(Date.now()/1000)-1800}]};
+    latest = {results:[]};
+    document.querySelector('.lead').textContent = '演示数据 · 部署后这里显示你自己的记录';
+  }
+
+  const seen = new Set();
+  const items = pending.filter(p => {
+    if(seen.has(p.fingerprint)) return false;
+    seen.add(p.fingerprint); return true;
+  }).slice(0, 40);
+
+  document.getElementById('n-pending').textContent = items.length;
+  const liked = (state.liked || []).slice().reverse();
+  document.getElementById('n-liked').textContent = liked.length;
+
+  const box = document.getElementById('pending-list');
+  if(!items.length){
+    box.innerHTML = '<div class="empty">全认出来了，没有要你操心的</div>';
+  } else {
+    box.innerHTML = items.map((it, i) => {
+      const kw = (it.track && it.track.name) || it.title || '';
+      const conf = it.note
+        ? it.note
+        : (it.score ? `置信度 ${Math.round(it.score*100)}%` : '没听出来');
+      return `<div class="item">
+        <div class="title">${esc(it.title || '(无标题)')}</div>
+        <div class="meta"><span>${conf}</span><span>${fmt(it.ts)}</span>${it.track?`<span>最像：${esc(it.track.name)}</span>`:''}</div>
+        <div class="actions">
+          <a class="btn primary" href="${searchUrl(kw)}" target="_blank" rel="noopener">去网易云搜「${esc(kw.slice(0,12))}」</a>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  const ll = document.getElementById('liked-list');
+  ll.innerHTML = liked.length
+    ? liked.slice(0, 30).map(x => `<li><span>${esc(x.label)}</span><span class="t">${fmt(x.ts)}</span></li>`).join('')
+    : '<li><span class="t">还没有</span></li>';
+})();
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+</body>
+</html>
