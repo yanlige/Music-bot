@@ -1,0 +1,63 @@
+name: 视频号好歌入库
+
+on:
+  # 手机快捷指令调这个接口触发，口令放在 share_text 里
+  workflow_dispatch:
+    inputs:
+      share_text:
+        description: '视频号分享口令'
+        required: false
+        default: ''
+
+  # 兜底：每天北京时间 23:00 扫一遍仓库里的 inbox.txt
+  schedule:
+    - cron: '0 15 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: like
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: 装 ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: 装依赖
+        run: pip install -q -r requirements.txt
+
+      - name: 处理
+        env:
+          NETEASE_MUSIC_U: ${{ secrets.NETEASE_MUSIC_U }}
+          RESOLVER_API_URL: ${{ secrets.RESOLVER_API_URL }}
+          RESOLVER_API_KEY: ${{ secrets.RESOLVER_API_KEY }}
+          BARK_URL: ${{ secrets.BARK_URL }}
+          AUTO_LIKE_SCORE: ${{ vars.AUTO_LIKE_SCORE || '0.72' }}
+        run: |
+          if [ -n "${{ github.event.inputs.share_text }}" ]; then
+            python main.py --share "${{ github.event.inputs.share_text }}"
+          else
+            python main.py --file inbox.txt
+          fi
+
+      - name: 回写结果
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json pending.json latest.json
+          git diff --cached --quiet && echo "没有变化" && exit 0
+          git commit -m "chore: 更新 ${GITHUB_RUN_ID}"
+          git push
