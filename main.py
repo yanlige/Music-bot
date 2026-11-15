@@ -454,7 +454,6 @@ def search_with_fallback(kw: str) -> list[Track]:
     return []
 
 
-def like_track(track_id: int) -> bool:
  # ---- 点红心：requests 直调网易云加密接口（不依赖第三方 SDK） ----
 
 _WEAPI_MODULUS = (
