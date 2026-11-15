@@ -455,25 +455,83 @@ def search_with_fallback(kw: str) -> list[Track]:
 
 
 def like_track(track_id: int) -> bool:
-    """点亮红心。依赖 pyncm 走 weapi，只需要 MUSIC_U cookie"""
+ # ---- 点红心：requests 直调网易云加密接口（不依赖第三方 SDK） ----
+
+_WEAPI_MODULUS = (
+    "00e0b509f6259df8642dbc35662901477df22677ec152b5ff68ace615bb7"
+    "b725152b3ab17a876aea8a5aa76d2e417629ec4ee341f56135fccf69528"
+    "0104e0312ecbda92557c93870114af6c9d05c4f7f0c3685b7a46bee2559"
+    "325756ce9b14c0ded6155a7564e8628bcd022995d3ff7a75aaba4a7aa98"
+    "d707edc2cd2e7e90f9cffc4be7c8be58f7cf3fe"
+)
+_WEAPI_IV = b"0102030405060708"
+
+
+def _aes_b64(text: str, key: str) -> str:
+    import base64
+    from Crypto.Cipher import AES
+    pad = 16 - len(text) % 16
+    t = (text + chr(pad) * pad).encode()
+    cipher = AES.new(key.encode(), AES.MODE_CBC, _WEAPI_IV)
+    return base64.b64encode(cipher.encrypt(t)).decode()
+
+
+def _rsa_hex(text: str) -> str:
+    import binascii
+    text = text[::-1]
+    rs = pow(int(binascii.hexlify(text.encode()), 16), 65537, int(_WEAPI_MODULUS, 16))
+    return format(rs, "0>256x")
+
+
+def _weapi(data: dict) -> dict:
+    import random
+    text = json.dumps(data)
+    pool = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    secret = "".join(random.sample(pool, 16))
+    return {
+        "params": _aes_b64(_aes_b64(text, "0CoJUm6Qyw8W8jud"), secret),
+        "encSecKey": _rsa_hex(secret),
+    }
+
+
+def like_track(track_id: int) -> bool:
+    """点亮红心。走 weapi 加密接口，只需要 MUSIC_U cookie"""
     music_u = os.environ.get("NETEASE_MUSIC_U", "").strip()
     if not music_u:
         print("  [跳过] 没有配置 NETEASE_MUSIC_U", file=sys.stderr)
         return False
     try:
-        import pyncm
-        from pyncm import apis
+        s = requests.Session()
+        s.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            "Referer": "https://music.163.com/",
+            "Origin": "https://music.163.com",
+        })
+        s.cookies.set("MUSIC_U", music_u, domain=".music.163.com")
+        s.cookies.set("os", "pc", domain=".music.163.com")
+        s.cookies.set("appver", "2.10.11", domain=".music.163.com")
 
-        session = pyncm.GetCurrentSession()
-        session.cookies.set("MUSIC_U", music_u, domain=".music.163.com")
-        session.cookies.set("os", "ios", domain=".music.163.com")
-        apis.track.SetTrackLike(track_id, True)
-        return True
+        r = s.post(
+            "https://music.163.com/weapi/like",
+            data=_weapi({"trackId": track_id, "like": "true", "time": "3", "csrf_token": ""}),
+            timeout=15,
+        )
+        try:
+            j = r.json()
+        except Exception:
+            # 服务器返回空/非 JSON：通常是数据中心 IP 被网易云风控拦截
+            print(f"  [加红心失败] HTTP {r.status_code} 但响应为空或非 JSON —— 可能被网易云 IP 风控拦截", file=sys.stderr)
+            return False
+
+        code = j.get("code")
+        msg = j.get("message") or j.get("msg") or ""
+        if code == 200 or "已喜欢" in str(msg):
+            return True
+        print(f"  [加红心失败] code={code} {msg}", file=sys.stderr)
+        return False
     except Exception as e:
         print(f"  [加红心失败] {e}", file=sys.stderr)
         return False
-
-
 # --------------------------------------------------------------------------
 # 六、状态与输出
 # --------------------------------------------------------------------------
